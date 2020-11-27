@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: app.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: app.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>//requiriendo dependencias 
+const express = require('express')
+const socketio = require('socket.io')
+const http = require('http')
+const app = express()//instancia de express
+const server = http.createServer(app)//creando el server con http y express como handle request
+const io = socketio(server)//iniciando el server de socket.io
+const PORT = 3000  // puerto paara recibir peticiones
+
+app.set('view engine', 'ejs')  // motor de plantillas usado ejs
+app.engine('html', require('ejs').renderFile)  // se renderizan los archivos html
+
+
+app.use(express.static(__dirname + '/public'));//indexando archivos estaticos
+
+//creando el router
+
+app.get('/', function (req, res) {
+  res.render(__dirname + "/view/index.html");
+});
+
+app.get('/adivina', function (req, res) {
+  res.render(__dirname + "/view/adivina.html");
+});
+
+app.get('/contacto', function (req, res) {
+  res.render(__dirname + "/view/contacto.html");
+});
+
+app.get('/phaser.js', function (req, res) {
+  res.sendFile(__dirname + "/node_modules/phaser/dist/phaser.js");
+});
+
+app.get('/socket.io.js', function (req, res) {
+  res.sendFile(__dirname + "/node_modules/socket.io/client-dist/socket.io.js");
+});
+
+var player0;
+var player1;
+var in1 = 0;
+
+const connections = [null, null]
+
+/**
+ * @module serverAdivinaelLugar
+ */
+/**
+ * @function
+ * @name connection
+ * @description encargada de realizar la comunicación servidor-cliente
+ */
+io.on('connection', (socket) => {
+
+  // Find an available player number
+  let playerIndex = -1;
+  for (const i in connections) {
+    if (connections[i] === null) {
+      playerIndex = i
+      break
+    }
+  }
+  /**
+     * @function
+     * @inner
+     * @memberof module:serverAdivinaelLugar
+     * @name actualizarTurno
+     * @description actualiza el turno del jugador (see: {@link module:serverAdivinaelLugar~connection}
+     */
+  io.emit('actualizar_turno', 0);
+   /**
+     * @function
+     * @inner
+     * @memberof module:serverAdivinaelLugar
+     * @name playerNumber
+     * @description envia el id del jugador 1 (see: {@link module:serverAdivinaelLugar~connection}
+     */
+  socket.emit('player-number', playerIndex);
+  /**
+     * @function
+     * @inner
+     * @memberof module:serverAdivinaelLugar
+     * @name playerNumber2
+     * @description envia el id del jugador 2 (see: {@link module:serverAdivinaelLugar~connection}
+     */
+  socket.emit('player-number2', playerIndex);
+  
+  console.log(`Player ${playerIndex} has connected`);
+  if (playerIndex === -1) return
+
+  connections[playerIndex] = false
+  //console.log('a user connected');
+
+  //console.log(socket.id);
+
+/**
+     * @function
+     * @inner
+     * @memberof module:serverAdivinaelLugar
+     * @name disconnect
+     * @description anuncia que un jugador se ha eliminado (see: {@link module:serverAdivinaelLugar~connection}
+     */
+  socket.on('disconnect', () => {   // usuario desconectado
+    // console.log('user disconnected');
+    console.log(`Player ${playerIndex} disconnected`)
+    connections[playerIndex] = null
+  });
+  /**
+     * @function
+     * @inner
+     * @memberof module:serverAdivinaelLugar
+     * @name lugar
+     * @description envia el lugar del jugador (see: {@link module:serverAdivinaelLugar~connection}
+     */
+  socket.on('lugar', (msg) => {   // lugar de jugador  
+    console.log(".");
+    console.log(msg);
+    if (parseInt(msg.jugador) == '0') {
+      player0 = msg.lugar;
+      console.log("lugar del juegador 0 " + msg.lugar);
+    } else {
+      player1 = msg.lugar;
+      console.log("lugar del juegador 1 " + msg.lugar);
+    }
+  });
+
+/**
+     * @function
+     * @inner
+     * @memberof module:serverAdivinaelLugar
+     * @name chatMessage
+     * @description anuncia que recibió un mensaje (see: {@link module:serverAdivinaelLugar~connection}
+     */
+  socket.on('chat message', (msg) => { // emision broadcast del mensaje recibido
+    console.log(msg);
+    io.emit('chat message', msg);
+  });
+/**
+     * @function
+     * @inner
+     * @memberof module:serverAdivinaelLugar
+     * @name click
+     * @description detecta que imagen fue presionada (see: {@link module:serverAdivinaelLugar~connection}
+     */
+  socket.on('click', function (data) { //deteccion de clic para saber que imagen eligió
+    io.emit('actualizar_turno', data.jugador);
+    console.log(data);
+    if (data.jugador == '0') {
+      console.log("aui");
+      if (player1 == data.data) {
+        io.emit('ganador', data.jugador);
+      }
+    } else {
+      if (player0 == data.data) {
+        io.emit('ganador', data.jugador);
+      }
+    }
+  });
+
+
+});
+
+
+
+server.listen(PORT, () => {  // el servidor se pone en escucha a peticiones
+  console.log('listening on ' + PORT)
+});</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li>
+      
+    </li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Thu Nov 26 2020 22:36:21 GMT-0500 (GMT-05:00)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

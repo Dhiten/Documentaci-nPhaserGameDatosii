@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: app.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: app.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>document.addEventListener("DOMContentLoaded", () => {
+  const userGrid = document.querySelector(".grid-user");
+  const enemyGrid = document.querySelector(".grid-enemy");
+  const displayGrid = document.querySelector(".grid-display");
+  const ships = document.querySelectorAll(".ship");
+  const destroyer = document.querySelector(".destroyer-container");
+  const submarine = document.querySelector(".submarine-container");
+  const cruiser = document.querySelector(".cruiser-container");
+  const battleship = document.querySelector(".battleship-container");
+  const carrier = document.querySelector(".carrier-container");
+  const startButton = document.querySelector("#start");
+  const rotateButton = document.querySelector("#rotate");
+  const turnDisplay = document.querySelector("#whose-go");
+  const infoDisplay = document.querySelector("#info");
+  const singlePlayerButton = document.querySelector("#singlePlayerButton");
+  const multiPlayerButton = document.querySelector("#multiPlayerButton");
+  const userSquares = [];
+  const enemySquares = [];
+  let isHorizontal = true;
+  let isGameOver = false;
+  let currentPlayer = "user";
+  const width = 10;
+  let gameMode = "";
+  let playerNum = 0;
+  let ready = false;
+  let enemyReady = false;
+  let allShipsPlaced = false;
+  let shotFired = -1;
+
+  //Naves
+  const shipArray = [
+    {
+      name: "destroyer",
+      directions: [
+        [0, 1],
+        [0, width],
+      ],
+    },
+    {
+      name: "submarine",
+      directions: [
+        [0, 1, 2],
+        [0, width, width * 2],
+      ],
+    },
+    {
+      name: "cruiser",
+      directions: [
+        [0, 1, 2],
+        [0, width, width * 2],
+      ],
+    },
+    {
+      name: "battleships",
+      directions: [
+        [0, 1, 2, 3],
+        [0, width, width * 2, width * 3],
+      ],
+    },
+    {
+      name: "carrier",
+      directions: [
+        [0, 1, 2, 3, 4],
+        [0, width, width * 2, width * 3, width * 4],
+      ],
+    },
+  ];
+
+  crearTablero(userGrid, userSquares);
+  crearTablero(enemyGrid, enemySquares);
+
+  //Seleccionar modo de juego
+  singlePlayerButton.addEventListener("click", startSinglePlayer);
+  multiPlayerButton.addEventListener("click", startMultiPlayer);
+  /**
+   * @module BattleShip
+   */
+
+  /**
+   * @function
+   * @name startSinglePlayerShips
+   * @description Función encargada del colocar  los barcos en el modo de un solo jugador
+   */
+  function startSinglePlayer() {
+    gameMode = "singlePlayer";
+    for (let i = 0; i &lt; 5; i++) {
+      generate(shipArray[i]);
+    }
+    startButton.addEventListener("click", playGameSingle);
+  }
+
+  /**
+   * @function
+   * @name startSinglePlayer
+   * @description Función encargada del colocar  el modo de juego como un solo jugador
+   */
+  function startSinglePlayer() {
+    gameMode = "singlePlayer";
+  }
+  /**
+   * @function
+   * @name startMultiPlayer
+   * @description Función encargada del colocar  el modo de juego en varios jugadores
+   */
+  function startMultiPlayer() {
+    gameMode = "multiPlayer";
+    const socket = io();
+    /**
+     * @function
+     * @inner
+     * @memberof module:BattleShip
+     * @name playerNumber
+     * @description Obtiene el número del jugador (see: {@link module:BattleShip~startMultiPlayer})
+     * @param {number} num número del jugador
+     */
+
+    socket.on("player-number", (num) => {
+      if (num === -1) {
+        infoDisplay.innerHTML = "El servidor está lleno";
+      } else {
+        playerNum = parseInt(num);
+        if (playerNum === 1) currentPlayer = "enemy";
+        socket.emit("check-players");
+      }
+    });
+
+    /**
+     * @function
+     * @name playerConecction
+     * @description Función encargada detectar sin un jugador se conecta o desconcta
+     * @param {number} num número del jugador
+     */
+    socket.on("player-connection", (num) => {
+      playerConnectedOrDisconnected(num);
+    });
+
+    /**
+     * @function
+     * @name enemyReady
+     * @description Encargada de verificar si el otro jugador (o enemigo) se encuentra listo
+     * @param {number} num número del jugador
+     */
+    socket.on("enemy-ready", (num) => {
+      enemyReady = true;
+      playerReady(num);
+      if (ready) playGameMulti(socket);
+    });
+    /**
+     * @function
+     * @name checkPlayer
+     * @description Se encarga de verificar el estado del jugador
+     * @param {Array} players lista de jugadores
+     */
+    socket.on("check-players", (players) => {
+      players.forEach((p, i) => {
+        if (p.connected) playerConnectedOrDisconnected(i);
+        if (p.ready) {
+          playerReady(i);
+          if (i != playerNum) enemyReady = true;
+        }
+      });
+    });
+    
+    startButton.addEventListener("click", () => {
+      if (allShipsPlaced) playGameMulti(socket);
+      else infoDisplay.innerHTML = "Por favor ubica todas las naves";
+    });
+
+    enemySquares.forEach((square) => {
+      square.addEventListener("click", () => {
+        if (currentPlayer === "user" &amp;&amp; ready &amp;&amp; enemyReady) {
+          shotFired = square.dataset.id;
+          socket.emit("fire", shotFired);
+        }
+      });
+    });
+
+    /**
+     * @function
+     * @name fire
+     * @description se encarga de verificar los ataques enviados
+     * @param {*} id id del jugador que envia el ataque 
+     */
+    socket.on("fire", (id) => {
+      enemyGo(id);
+      const square = userSquares[id];
+      socket.emit("fire-reply", square.classList);
+      playGameMulti(socket);
+    });
+
+    
+    /**
+    * @function
+    * @name fireReply
+    * @description se encarga de responder a los ataques  
+    */
+    socket.on("fire-reply", (classList) => {
+      revealSquare(classList);
+      playGameMulti(socket);
+    });
+    /**
+     * @function
+     * @name playerConnectedOrDisconnected
+     * @description función encargada de verficiar si un jugador está conectado o desconectad
+     * @param {*} num número del jugador
+     */
+    function playerConnectedOrDisconnected(num) {
+      let player = `.p${parseInt(num) + 1}`;
+      document
+        .querySelector(`${player} .connected span`)
+        .classList.toggle("green");
+      if (parseInt(num) === playerNum)
+        document.querySelector(player).style.fontWeight = "bold";
+    }
+  }
+
+  /**
+   * @function
+   * @name crearTablero
+   * @description función encargada de crear el tablero 
+   * @param {*} grid  malla o matriz donde se genera el tablero 
+   * @param {*} squares cuadros a ingresar en las casillas
+   */
+  function crearTablero(grid, squares) {
+    for (let i = 0; i &lt; width * width; i++) {
+      const square = document.createElement("div");
+      square.dataset.id = i;
+      grid.appendChild(square);
+      squares.push(square);
+    }
+  }
+
+  /**
+   * @function
+   * @name rotate
+   * @description función encargada de rotar las naves
+   */
+  function rotate() {
+    if (isHorizontal) {
+      destroyer.classList.toggle("destroyer-container-vertical");
+      submarine.classList.toggle("submarine-container-vertical");
+      cruiser.classList.toggle("cruiser-container-vertical");
+      battleship.classList.toggle("battleship-container-vertical");
+      carrier.classList.toggle("carrier-container-vertical");
+      isHorizontal = false;
+      return;
+    } else {
+      destroyer.classList.toggle("destroyer-container");
+      submarine.classList.toggle("submarine-container");
+      cruiser.classList.toggle("cruiser-container");
+      battleship.classList.toggle("battleship-container");
+      carrier.classList.toggle("carrier-container");
+      isHorizontal = true;
+      return;
+    }
+  }
+  rotateButton.addEventListener("click", rotate);
+
+  //Mover las naves del usuario
+  ships.forEach((ship) => ship.addEventListener("dragstart", dragStart));
+  userSquares.forEach((square) =>
+    square.addEventListener("dragstart", dragStart)
+  );
+  userSquares.forEach((square) =>
+    square.addEventListener("dragover", dragOver)
+  );
+  userSquares.forEach((square) =>
+    square.addEventListener("dragenter", dragEnter)
+  );
+  userSquares.forEach((square) =>
+    square.addEventListener("dragleave", dragLeave)
+  );
+  userSquares.forEach((square) => square.addEventListener("drop", dragDrop));
+  userSquares.forEach((square) => square.addEventListener("dragend", dragEnd));
+
+  let selectedShipNameWithIndex;
+  let draggedShip;
+  let draggedShipLength;
+
+  ships.forEach((ship) =>
+    ship.addEventListener("mousedown", (e) => {
+      selectedShipNameWithIndex = e.target.id;
+    })
+  );
+    /**
+     * @function
+     * @name dragStart
+     * @description función encargada de verificar el arrastrado de las naves
+     */
+  function dragStart() {
+    draggedShip = this;
+    draggedShipLength = this.childNodes.length;
+  }
+  /**
+   * @function
+   * @name dragOver
+   * @description función encargada de verificar que se arrastra la nave
+   * @param {*} e evento del mouse
+   */
+  function dragOver(e) {
+    e.preventDefault();
+  }
+/**
+   * @function
+   * @name dragEnter
+   * @description función encargada de verificar que la nave entra en la zona de arrastre
+   * @param {*} e evento del mouse
+   */
+  function dragEnter(e) {
+    e.preventDefault();
+  }
+
+  function dragLeave() {}
+/**
+   * @function
+   * @name dragDrop
+   * @description función encargada de verificar si la nave ha sido soltada
+   * @param {*} e evento del mouse
+   */
+  function dragDrop(e) {
+    let shipNameWithLastId = draggedShip.lastChild.id;
+    let shipClass = shipNameWithLastId.slice(0, -2);
+    let lastShipIndex = parseInt(shipNameWithLastId.substr(-1));
+    let shipLastId = lastShipIndex + parseInt(this.dataset.id);
+    const notAllowedHorizontal = [
+      0,
+      10,
+      20,
+      30,
+      40,
+      50,
+      60,
+      70,
+      80,
+      90,
+      1,
+      11,
+      21,
+      31,
+      41,
+      51,
+      61,
+      71,
+      81,
+      91,
+      2,
+      12,
+      22,
+      32,
+      42,
+      52,
+      62,
+      72,
+      82,
+      92,
+      3,
+      13,
+      23,
+      33,
+      43,
+      53,
+      63,
+      73,
+      83,
+      93,
+    ];
+    const notAllowedVertical = [
+      99,
+      98,
+      97,
+      96,
+      95,
+      94,
+      93,
+      92,
+      91,
+      90,
+      89,
+      88,
+      87,
+      86,
+      85,
+      84,
+      83,
+      82,
+      81,
+      80,
+      79,
+      78,
+      77,
+      76,
+      75,
+      74,
+      73,
+      72,
+      71,
+      70,
+      69,
+      68,
+      67,
+      66,
+      65,
+      64,
+      63,
+      62,
+      61,
+      60,
+    ];
+    let newNotAllowedHorizontal = notAllowedHorizontal.slice(
+      0,
+      10 * lastShipIndex
+    );
+    let newNotAllowedVertical = notAllowedVertical.slice(0, 10 * lastShipIndex);
+    selectedShipIndex = parseInt(selectedShipNameWithIndex.substr(-1));
+    shipLastId = shipLastId - selectedShipIndex;
+
+    if (isHorizontal &amp;&amp; !newNotAllowedHorizontal.includes(shipLastId)) {
+      for (let i = 0; i &lt; draggedShipLength; i++) {
+        let directionClass;
+        if (i === 0) directionClass = "start";
+        if (i === draggedShipLength - 1) directionClass = "end";
+        userSquares[
+          parseInt(this.dataset.id) - selectedShipIndex + i
+        ].classList.add("taken", "horizontal", directionClass, shipClass);
+      }
+    } else if (!isHorizontal &amp;&amp; !newNotAllowedVertical.includes(shipLastId)) {
+      for (let i = 0; i &lt; draggedShipLength; i++) {
+        let directionClass;
+        if (i === 0) directionClass = "start";
+        if (i === draggedShipLength - 1) directionClass = "end";
+        userSquares[
+          parseInt(this.dataset.id) - selectedShipIndex + width * i
+        ].classList.add("taken", shipClass);
+      }
+    } else return;
+    displayGrid.removeChild(draggedShip);
+    if (!displayGrid.querySelector(".ship")) allShipsPlaced = true;
+  }
+
+  function dragEnd() {}
+
+  /**
+   * @function
+   * @name playGameSingle
+   * @description función encargada de implementar las lógicas del juego cuando se realiza de manera individual
+   */
+  function playGameSingle() {
+    if (isGameOver) return;
+    if (currentPlayer === "user") {
+      turnDisplay.innerHTML = "Tú turno";
+      enemySquares.forEach((square) =>
+        square.addEventListener("click", function (e) {
+          shotFired = square.dataset.id;
+          revealSquare(square);
+        })
+      );
+      if (currentPlayer === "enemy") {
+        turnDisplay.innerHTML = "Turno del enemigo";
+        setTimeout(enemyGo, 1000);
+      }
+    }
+  }
+
+  /**
+   * @function
+   * @name playGameSingle
+   * @description función encargada de implementar las lógicas del juego cuando se realiza entre varios jugadores
+   */
+  function playGameMulti(socket) {
+    if (isGameOver) return;
+    if (!ready) {
+      socket.emit("player-ready");
+      ready = true;
+      playerReady(playerNum);
+    }
+    if (enemyReady) {
+      if (currentPlayer === "user") {
+        turnDisplay.innerHTML = "Tú turno";
+      }
+      if (currentPlayer === "enemy") {
+        turnDisplay.innerHTML = "Turno del enemigo";
+      }
+    }
+  }
+  /**
+   * @function
+   * @name playerReady
+   * @description función encargada de anunciar que el jugador está listo 
+   * @param {*} num id del jugador  
+   */
+  function playerReady(num) {
+    let player = `p${parseInt(num) + 1}`;
+    document.querySelector(`.${player} .ready`).classList.toggle("green");
+  }
+
+  let destroyerCount = 0;
+  let submarineCount = 0;
+  let cruiserCount = 0;
+  let battleshipCount = 0;
+  let carrierCount = 0;
+  /**
+   * @function
+   * @name revealSquare
+   * @description función encargada de revelar el cuadrado seleccionado en el tablero 
+   * @param {*} classList lista de cuadrados 
+   */
+  function revealSquare(classList) {
+    const enemySquare = enemyGrid.querySelector(`div[data-id='${shotFired}']`);
+    const obj = Object.values(classList);
+    if (
+      !enemySquare.classList.contains("boom") &amp;&amp;
+      currentPlayer === "user" &amp;&amp;
+      !isGameOver
+    ) {
+      if (obj.includes("destoyer")) destroyerCount++;
+      if (obj.includes("submarine")) submarineCount++;
+      if (obj.includes("cruiser")) cruiserCount++;
+      if (obj.includes("battleship")) battleshipCount++;
+      if (obj.includes("carrier")) carrierCount++;
+    }
+    if (obj.includes("taken")) {
+      enemySquare.classList.add("boom");
+    } else {
+      enemySquare.classList.add("miss");
+    }
+    checkForWinner();
+    currentPlayer = "enemy";
+    if (gameMode === "singlePlayer") playGameSingle();
+  }
+
+  let eDestroyerCount = 0;
+  let eSubmarineCount = 0;
+  let eCruiserCount = 0;
+  let eBattleshipCount = 0;
+  let eCarrierCount = 0;
+  /**
+   * @function
+   * @name enemyGo
+   * @description función encargada de enviar el turno del jugador enemigo
+   * @param {*} square  cuadrado a verificar 
+   */
+  function enemyGo(square) {
+    if (gameMode === "singlePlayer")
+      square = Math.floor(Math.random() * userSquares.length);
+    if (!userSquares[square].classList.contains("boom")) {
+      userSquares[square].classList.add("boom");
+      if (userSquares[square].classList.contains("destroyer"))
+        eDestroyerCount++;
+      if (userSquares[square].classList.contains("submarine"))
+        eSubmarineCount++;
+      if (userSquares[square].classList.contains("cruiser")) eCruiserCount++;
+      if (userSquares[square].classList.contains("battleship"))
+        eBattleshipCount++;
+      if (userSquares[square].classList.contains("carrier")) eCarrierCount++;
+      checkForWinner();
+    } else if (gameMode === "singlePlayer") enemyGo();
+    currentPlayer = "user";
+    turnDisplay.innerHTML = "Tú turno";
+  }
+  /**
+   * @function
+   * @name checkForWinner
+   * @description función encargada de verificar las naves eliminadas y el posterior ganador del juego 
+   */
+  function checkForWinner() {
+    if (destroyerCount === 2) {
+      infoDisplay.innerHTML = `Destrozaste la nave destroyer del enemigo`;
+      destroyerCount = 10;
+    }
+    if (submarineCount === 3) {
+      infoDisplay.innerHTML = `Destrozaste la nave submarine del enemigo`;
+      submarineCount = 10;
+    }
+    if (cruiserCount === 3) {
+      infoDisplay.innerHTML = `Destrozaste la nave cruiser del enemigo`;
+      cruiserCount = 10;
+    }
+    if (battleshipCount === 4) {
+      infoDisplay.innerHTML = `Destrozaste la nave battleship del enemigo`;
+      battleshipCount = 10;
+    }
+    if (carrierCount === 5) {
+      infoDisplay.innerHTML = `Destrozaste la nave carrier del enemigo`;
+      carrierCount = 10;
+    }
+    if (eDestroyerCount === 2) {
+      infoDisplay.innerHTML = `El enemigo destrozo tu nave destroyer`;
+      eDestroyerCount = 10;
+    }
+    if (eSubmarineCount === 3) {
+      infoDisplay.innerHTML = `El enemigo destrozo tu nave submarine`;
+      eSubmarineCount = 10;
+    }
+    if (eCruiserCount === 3) {
+      infoDisplay.innerHTML = `El enemigo destrozo tu nave cruiser`;
+      eCruiserCount = 10;
+    }
+    if (eBattleshipCount === 4) {
+      infoDisplay.innerHTML = `El enemigo destrozo tu nave battleship`;
+      eBattleshipCount = 10;
+    }
+    if (eCarrierCount === 5) {
+      infoDisplay.innerHTML = `El enemigo destrozo tu nave carrier`;
+      eCarrierCount = 10;
+    }
+    if (
+      destroyerCount +
+        submarineCount +
+        cruiserCount +
+        battleshipCount +
+        carrierCount ===
+      50
+    ) {
+      infoDisplay.innerHTML = `GANASTE`;
+      gameOver();
+    }
+    if (
+      eDestroyerCount +
+        eSubmarineCount +
+        eCruiserCount +
+        eBattleshipCount +
+        eCarrierCount ===
+      50
+    ) {
+      infoDisplay.innerHTML = `GANO EL ENEMIGO`;
+      gameOver();
+    }
+  }
+  /**
+   * @function 
+   * @name gameOver
+   * @description función encargada de anunciar que el juego ha terminado. 
+   */
+  function gameOver() {
+    isGameOver = true;
+    startButton.removeEventListener("click", playGameSingle);
+  }
+});
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Modules</h3><ul><li>
+     
+    
+    </li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.6</a> on Thu Nov 26 2020 22:11:16 GMT-0500 (GMT-05:00)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
